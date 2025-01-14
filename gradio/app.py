@@ -18,6 +18,7 @@ import spaces
 import torch
 
 import gradio as gr
+from accelerate import Accelerator
 
 MODEL_TYPES = ["v1.2-stage3"]
 WATERMARK_PATH = "./assets/images/watermark/watermark.png"
@@ -89,11 +90,13 @@ def build_models(model_type, config, enable_optimization=False):
     # build vae
     from opensora.registry import MODELS, build_module
 
-    vae = build_module(config.vae, MODELS).cuda()
+    # vae = build_module(config.vae, MODELS).cuda()
+    vae = build_module(config.vae, MODELS).eval()
 
     # build text encoder
     text_encoder = build_module(config.text_encoder, MODELS)  # T5 must be fp32
-    text_encoder.t5.model = text_encoder.t5.model.cuda()
+    # text_encoder.t5.model = text_encoder.t5.model.cuda()
+    text_encoder.t5.model.eval()
 
     # build stdit
     # we load model from HuggingFace directly so that we don't need to
@@ -102,7 +105,7 @@ def build_models(model_type, config, enable_optimization=False):
 
     model_kwargs = {k: v for k, v in config.model.items() if k not in ("type", "from_pretrained", "force_huggingface")}
     stdit = STDiT3.from_pretrained(HF_STDIT_MAP[model_type], **model_kwargs)
-    stdit = stdit.cuda()
+    # stdit = stdit.cuda()
 
     # build scheduler
     from opensora.registry import SCHEDULERS
@@ -119,6 +122,12 @@ def build_models(model_type, config, enable_optimization=False):
 
     # clear cuda
     torch.cuda.empty_cache()
+    accelerator = Accelerator()
+    vae = accelerator.prepare_model(vae, evaluation_mode=True)
+    stdit = accelerator.prepare_model(stdit, evaluation_mode=True)
+    text_encoder.t5.model = accelerator.prepare_model(text_encoder.t5.model, evaluation_mode=True)
+    scheduler = accelerator.prepare_scheduler(scheduler)
+
     return vae, text_encoder, stdit, scheduler
 
 
@@ -352,8 +361,14 @@ def run_inference(
             scheduler_kwargs["num_sampling_steps"] = sampling_steps
             scheduler_kwargs["cfg_scale"] = cfg_scale
 
-            scheduler.__init__(**scheduler_kwargs)
-            samples = scheduler.sample(
+            # from torch.distributed import breakpoint as dist_breakpoint
+            # dist_breakpoint()
+            # breakpoint()
+            print(f'type(scheduler)= {type(scheduler)}')
+            # scheduler_kwargs.pop("use_timestep_transform")
+            scheduler_inner = scheduler.scheduler
+            scheduler_inner.__init__(**scheduler_kwargs)
+            samples = scheduler_inner.sample(
                 stdit,
                 text_encoder,
                 z=z,
@@ -649,7 +664,7 @@ def main():
 
     # launch
     demo.queue(max_size=5, default_concurrency_limit=1)
-    demo.launch(server_port=args.port, server_name=args.host, share=args.share, max_threads=1)
+    demo.launch(server_port=args.port, server_name=args.host, share=True, debug=True, show_error=True)
 
 
 if __name__ == "__main__":

@@ -179,7 +179,7 @@ For CUDA 12.1, you can install the dependencies with the following commands. Oth
 
 ```bash
 # create a virtual env and activate (conda as an example)
-conda create -n opensora python=3.9
+conda create -n opensora python=3.9 cmake # cmake is for TensorNVMe
 conda activate opensora
 
 # download the repo
@@ -187,7 +187,7 @@ git clone https://github.com/hpcaitech/Open-Sora
 cd Open-Sora
 
 # install torch, torchvision and xformers
-pip install -r requirements/requirements-cu121.txt
+pip install -r requirements/requirements-cu121.txt # add numpy<2.0.0 to top of the file
 
 # the default installation is for inference only
 pip install -v . # for development mode, `pip install -v -e .`
@@ -197,6 +197,13 @@ pip install git+https://github.com/hpcaitech/TensorNVMe.git
 
 # install the latest colossalai to use the latest features
 pip install git+https://github.com/hpcaitech/ColossalAI.git
+ln -sf /usr/lib/x86_64-linux-gnu/libc++.so.6 "${CONDA_PREFIX}/lib/libstdc++.so.6" # Fixes ImportError: ${CONDA_PREFIX}/bin/../lib/libstdc++.so.6: version `GLIBCXX_3.4.32' not found (required by ${CONDA_PREFIX}/lib/python3.12/site-packages/torch/lib/libtorch_python.so)
+
+pip install flash-attn
+
+# For China, use a mirror for HuggingFace
+export HF_ENDPOINT="https://hf-mirror.com" # Windows cmd/PowerShell: $env:HF_ENDPOINT = "https://hf-mirror.com"
+# ...
 ```
 
 (Optional, recommended for fast speed, especially for training) To enable `layernorm_kernel` and `flash_attn`, you need to install `apex` and `flash-attn` with the following commands.
